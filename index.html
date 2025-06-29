@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Bookshelf</title>
+  <link rel="stylesheet" href="style.css"/>
+
+  <!-- Turn.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/turn.js/4.1.0/turn.min.js"></script>
+
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+  <h1 class="title">📚 My Bookshelf</h1>
+
+  <!-- Bookshelf View -->
+  <div id="bookshelf-view">
+    <div class="bookshelf" id="bookshelf"></div>
+  </div>
+
+  <!-- Flipbook View -->
+  <div id="flipbook-view" style="display:none">
+    <button id="backBtn">← Back to Shelf</button>
+    <h2 id="book-title"></h2>
+    <div id="flipbook" class="flipbook"></div>
+  </div>
+
+  <script>
+    let booksData = [];
+
+    function loadBooks() {
+      fetch('books.json')
+        .then(res => res.json())
+        .then(data => {
+          booksData = data;
+          const shelf = document.getElementById('bookshelf');
+          shelf.innerHTML = '';
+          data.forEach(book => {
+            const card = document.createElement('div');
+            card.className = 'book-card';
+            card.onclick = () => showBook(book.id);
+            card.innerHTML = `
+              <img src="${book.coverImage}" alt="${book.title}" class="cover" />
+              <div class="info">
+                <h3>${book.title}</h3>
+                <p>${book.author}</p>
+              </div>
+            `;
+            shelf.appendChild(card);
+          });
+        });
+    }
+
+    async function showBook(bookId) {
+      const book = booksData.find(b => b.id === bookId);
+      if (!book) return;
+
+      document.getElementById('bookshelf-view').style.display = 'none';
+      document.getElementById('flipbook-view').style.display = 'block';
+      document.getElementById('book-title').textContent = book.title;
+
+      const flipbook = document.getElementById('flipbook');
+      flipbook.innerHTML = ''; // Clear previous pages
+
+      const loading = document.createElement('p');
+      loading.textContent = '📄 Loading pages...';
+      flipbook.appendChild(loading);
+
+      // Load the PDF
+      const pdf = await pdfjsLib.getDocument(book.pdfUrl).promise;
+      flipbook.innerHTML = ''; // Clear loading text
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const context = canvas.getContext('2d');
+        await page.render({ canvasContext: context, viewport }).promise;
+
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'flipbook-page';
+        pageDiv.appendChild(canvas);
+        flipbook.appendChild(pageDiv);
+      }
+
+      // Initialize Turn.js
+      $('#flipbook').turn({
+        width: 800,
+        height: 600,
+        autoCenter: true
+      });
+
+      location.hash = book.id;
+    }
+
+    function backToShelf() {
+      document.getElementById('flipbook-view').style.display = 'none';
+      document.getElementById('bookshelf-view').style.display = 'block';
+      document.getElementById('flipbook').innerHTML = '';
+      location.hash = '';
+    }
+
+    window.onload = () => {
+      loadBooks();
+      document.getElementById('backBtn').onclick = backToShelf;
+
+      if (location.hash) {
+        const id = location.hash.replace('#', '');
+        showBook(id);
+      }
+    };
+
+    window.onhashchange = () => {
+      const id = location.hash.replace('#', '');
+      if (id) showBook(id);
+      else backToShelf();
+    };
+  </script>
+</body>
+</html>
